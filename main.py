@@ -81,7 +81,8 @@ async def analyze_fir(req: FIRRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Empty FIR text provided.")
     
-    llm = app_state.get("analyze_llm")
+    # Use chat_llm (Groq) instead of analyze_llm (OpenRouter) to prevent Catalyst 30s timeouts
+    llm = app_state.get("chat_llm")
     df = app_state.get("df")
     
     if not llm:
