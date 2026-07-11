@@ -13,6 +13,39 @@ router = APIRouter()
 def get_inv_db():
     conn = sqlite3.connect('investigations.db')
     conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.executescript("""
+        CREATE TABLE IF NOT EXISTS investigations (
+            id TEXT PRIMARY KEY,
+            username TEXT,
+            title TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS investigation_bookmarks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            investigation_id TEXT,
+            fir_id TEXT,
+            text_snippet TEXT,
+            added_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS investigation_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            investigation_id TEXT,
+            role TEXT,
+            content TEXT,
+            confidence_score TEXT,
+            rationale TEXT,
+            created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS investigation_cdr_networks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            investigation_id TEXT,
+            nodes_json TEXT,
+            links_json TEXT,
+            created_at TEXT
+        );
+    """)
+    conn.commit()
     return conn
 
 class InvestigationCreate(BaseModel):
