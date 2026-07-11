@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
+# Unzip the large data files so main.py can find them locally
+RUN apt-get update && apt-get install -y unzip && unzip -o data.zip && rm data.zip
+
 # Zoho Catalyst sets X_ZOHO_CATALYST_LISTEN_PORT
 # Our main.py reads this environment variable and binds uvicorn to it!
 CMD ["python", "main.py"]
