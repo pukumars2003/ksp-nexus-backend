@@ -57,14 +57,7 @@ app = FastAPI(title="KSP Nexus API", lifespan=lifespan)
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Setup CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://ksp-frontend-kvmmfxzm.onslate.in", "http://localhost:3000"], 
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Removed CORSMiddleware because Zoho Catalyst API Gateway handles CORS automatically
 
 from api_analytics import router as analytics_router
 from api_chat import router as chat_router
