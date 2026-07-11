@@ -1,0 +1,7 @@
+venv/
+.venv/
+__pycache__/
+ksp-backend/
+*.csv
+*.zip
+*.log

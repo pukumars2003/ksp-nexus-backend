@@ -1,0 +1,11 @@
+{
+	"command": "python main.py",
+	"build_path": ".",
+	"stack": "python_3_9",
+	"env_variables": {
+        "GROQ_API_KEY": "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",
+        "OPENROUTER_API_KEY": "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"
+    },
+	"memory": 512,
+	"scripts": {}
+}

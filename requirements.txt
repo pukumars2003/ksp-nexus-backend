@@ -1,0 +1,12 @@
+fastapi==0.110.0
+uvicorn==0.28.0
+pydantic==2.7.4
+pandas==2.2.2
+langchain==0.3.27
+langchain-core==0.3.74
+langchain-openai==0.3.29
+langchain-groq==0.3.7
+sentence-transformers==3.0.1
+faster-whisper==1.1.1
+python-dotenv==1.0.1
+python-multipart==0.0.20
