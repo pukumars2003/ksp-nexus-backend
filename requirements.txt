@@ -11,7 +11,8 @@ faster-whisper==1.1.1
 python-dotenv==1.0.1
 python-multipart==0.0.20
 PyJWT==2.8.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
+bcrypt==3.2.2
 deep-translator==1.11.4
 edge-tts==6.1.10
 networkx==3.2.1
