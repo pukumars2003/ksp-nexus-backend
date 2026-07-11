@@ -221,7 +221,12 @@ def get_network(inv_id: str, current_user: dict = Depends(get_current_user)):
     from main import app_state
     llm = app_state.get("chat_llm")
     if not llm:
-        return {"nodes": [], "links": [], "error": "LLM not loaded"}
+        import os
+        from langchain_groq import ChatGroq
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if not api_key:
+            return {"nodes": [], "links": [], "error": "LLM not loaded and GROQ_API_KEY not found"}
+        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0, api_key=api_key)
     
     sys_prompt = f"""You are a Police Intelligence System.
 Extract entities (Person, Phone, Location, Vehicle, Organization) from the following evidence and their relationships.
