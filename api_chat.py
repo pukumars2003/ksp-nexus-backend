@@ -166,9 +166,7 @@ Query: {final_query_en}"""
             if not context_cases:
                 import sys
                 
-                root_dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-                if root_dir_path not in sys.path:
-                    sys.path.append(root_dir_path)
+                # Removed sys.path hack
                 
                 import mo_linking
                 df_index = mo_linking.load_mo_index()
