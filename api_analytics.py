@@ -58,10 +58,7 @@ async def get_risk_offenders(user: dict = Depends(get_current_user)):
     import sys
     import os
     
-    # Add root folder to path so we can import risk_scoring
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    if root_dir not in sys.path:
-        sys.path.append(root_dir)
+    # Removed sys.path hack since files are colocated
         
     try:
         import risk_scoring
