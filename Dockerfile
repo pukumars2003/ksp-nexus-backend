@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements.txt .
 
+# Pre-install CPU-only PyTorch so we don't download 5GB of useless NVIDIA CUDA drivers
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
