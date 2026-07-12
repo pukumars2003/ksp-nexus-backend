@@ -38,7 +38,25 @@ async def chat_endpoint(
     from main import app_state
     
     llm = app_state.get("chat_llm")
+    if not llm:
+        import os
+        from langchain_groq import ChatGroq
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if api_key:
+            llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0, api_key=api_key)
+
     df = app_state.get("df")
+    if df is None or df.empty:
+        import pandas as pd
+        import os
+        local_path = os.path.join(os.path.dirname(__file__), "ksp_cleaned_prototype.pkl")
+        fallback_path = os.path.join(os.path.dirname(__file__), "..", "ksp_prototype_data", "ksp_cleaned_prototype.pkl")
+        data_path = local_path if os.path.exists(local_path) else fallback_path
+        try:
+            df = pd.read_pickle(data_path)
+            app_state["df"] = df
+        except:
+            pass
     
     if df is not None and user["jurisdiction"] != "All":
         df = df[df["District_Name"] == user["jurisdiction"]]
