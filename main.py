@@ -63,11 +63,13 @@ from api_analytics import router as analytics_router
 from api_chat import router as chat_router
 from api_auth import router as auth_router
 from api_investigation import router as investigation_router
+from api_ocr import router as ocr_router
 
 app.include_router(analytics_router)
 app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(investigation_router)
+app.include_router(ocr_router)
 
 class FIRRequest(BaseModel):
     text: str
