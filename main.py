@@ -57,22 +57,36 @@ app = FastAPI(title="KSP Nexus API", lifespan=lifespan)
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Removed CORSMiddleware because Zoho Catalyst API Gateway handles CORS automatically
-
+# Add CORSMiddleware for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 from api_analytics import router as analytics_router
 from api_chat import router as chat_router
 from api_auth import router as auth_router
-from api_investigation import router as investigation_router
+from api_investigation import router as inv_router
 from api_ocr import router as ocr_router
+from api_admin import router as admin_router
+from api_audit import router as audit_router
+from api_predictive import router as predictive_router
 
+app.include_router(auth_router)
 app.include_router(analytics_router)
 app.include_router(chat_router)
-app.include_router(auth_router)
-app.include_router(investigation_router)
+app.include_router(inv_router)
 app.include_router(ocr_router)
+app.include_router(audit_router)
+app.include_router(predictive_router)
+app.include_router(admin_router)
+app.include_router(audit_router)
 
 class FIRRequest(BaseModel):
     text: str
+    language: str = "en"
 
 @app.get("/")
 def read_root():
@@ -91,7 +105,7 @@ async def analyze_fir(req: FIRRequest):
         raise HTTPException(status_code=500, detail="Analyze LLM not initialized")
     try:
         # Pass the dataframe to parser to perform semantic search
-        result = parse_fir(llm, req.text, df)
+        result = parse_fir(llm, req.text, df, language=req.language)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

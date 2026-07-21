@@ -4,8 +4,8 @@ import pandas as pd
 import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 
-_local_path = os.path.join(os.path.dirname(__file__), "ksp-nexus-backend", "mo_embeddings.pkl")
-_fallback_path = os.path.join(os.path.dirname(__file__), "ksp_prototype_data", "mo_embeddings.pkl")
+_local_path = os.path.join(os.path.dirname(__file__), "mo_embeddings.pkl")
+_fallback_path = os.path.join(os.path.dirname(__file__), "..", "ksp_prototype_data", "mo_embeddings.pkl")
 INDEX_FILE = _local_path if os.path.exists(_local_path) else _fallback_path
 
 _embedding_model = None
@@ -75,4 +75,4 @@ def find_similar_mo(query_case_text, df_index, top_k=5, min_similarity=0.2):
         'similarity', ascending=False
     ).head(top_k)
 
-    return matches[['CrimeHead_Name', 'Place of Offence', 'FIR_YEAR', 'similarity']]
+    return matches

@@ -59,10 +59,14 @@ def login(req: LoginRequest):
         "username": user["username"],
         "role": user["role"],
         "jurisdiction": user["jurisdiction"],
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=20)
     }
     
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    
+    from api_audit import log_audit
+    log_audit(user["username"], user["role"], "LOGIN", "")
+    
     return {"token": token, "role": user["role"], "jurisdiction": user["jurisdiction"], "username": user["username"]}
 
 

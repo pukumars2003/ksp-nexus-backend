@@ -29,7 +29,7 @@ def preprocess_fir(text: str) -> dict:
         "is_kannada": is_kannada
     }
 
-def parse_fir(llm, new_fir_text: str, df: pd.DataFrame = None) -> dict:
+def parse_fir(llm, new_fir_text: str, df: pd.DataFrame = None, language: str = "en") -> dict:
     if len(new_fir_text.strip()) < 50:
         return {
             "Metadata": { "Crime_No": "N/A", "Police_Station": "N/A", "District": "N/A", "FIR_Date": "N/A", "IO_Name": "N/A" },
@@ -46,6 +46,7 @@ def parse_fir(llm, new_fir_text: str, df: pd.DataFrame = None) -> dict:
         }
 
     chunks = preprocess_fir(new_fir_text)
+    lang_instruction = f"Output all string values in the language corresponding to language code '{language}' (e.g. 'hi' for Hindi, 'kn' for Kannada) but keep the JSON keys in English." if language != "en" else "Output in English."
     
     extract_prompt = ChatPromptTemplate.from_template("""
 You are an expert criminal intelligence analyst. Parse the FIR chunks into structured JSON format. 
@@ -60,15 +61,17 @@ You are an expert criminal intelligence analyst. Parse the FIR chunks into struc
 {narrative_chunk}
 
 CRITICAL RULES:
-1. ONLY extract information that is explicitly stated in the chunks.
-2. DO NOT hallucinate. If a value is missing, output "N/A". If no property is stolen, output an empty Property array.
-3. CRIME TYPE: Infer it from the narrative (e.g., House Theft, Violation of Pub Timings, Fraud). DO NOT output 'Suspected offences'.
-4. PARTIES: Look carefully at the PARTIES CHUNK. The accused table might appear before the heading. Look for 'Accused', 'Manager', or names.
-5. ACTS & SECTIONS: Extract exactly what is written from the METADATA CHUNK (e.g., "103 KP Act", "13(2) PC Act").
-6. TRANSLATION: The narrative is Kannada: {is_kannada}. If True, be careful to translate accurately. DO NOT hallucinate words like 'accident' if it's a pub timing case.
-7. MO SUMMARY: Summarize briefly from the NARRATIVE CHUNK. Do not extract boilerplate text.
-8. BEHAVIOR PROFILE: Pub timing violations and financial frauds are NOT violent. Set Violence to "No".
-9. Output strictly valid JSON matching the schema below. Do not output anything else.
+1. ONLY extract information that is explicitly stated in the chunks. DO NOT hallucinate.
+2. MISSING VALUES: If a value is missing, output "N/A".
+3. CRIME TYPE: Be specific. If it is a house theft, classify as 'House Theft' or 'Residential Burglary' (ಮನೆ ಕಳ್ಳತನ), not just 'Theft'. Differentiate Theft (ಕಳ್ಳತನ) from Robbery (ದರೋಡೆ).
+4. PARTIES & ROLES: Include their designations/roles.
+5. INVESTIGATING OFFICER: Look carefully at the end of the FIR for "Name: " and their rank (e.g., 'SURESH.W - PSI').
+6. ACTS & SECTIONS: Extract exactly what is written from the METADATA CHUNK.
+7. FINANCIAL & PROPERTY DETAILS: Extract property weights/values EXACTLY as written in the text (e.g., '550 gms', do NOT truncate to '55g'). Do not mistranslate OCR artifacts (e.g., translate gold rings as 'ಬಂಗಾರದ ಉಂಗುರ', avoid nonsensical translations like 'ಬಿರಿಯಾಣಿ').
+8. TIMELINE: Extract all specific events if present. Distinguish between 'Incident Time', 'FIR Registered/Received', 'Read Over', and 'Dispatch to Court' with their respective exact times.
+9. BEHAVIOR PROFILE: Note that this is an analytical derived profile.
+10. AI_SUMMARY: Generate a concise 5-7 bullet point analytical summary detailing: Offence, Estimated Loss, Victim, Suspects, Likely Motive, Primary Targets, and Recommended Investigation Steps.
+11. {lang_instruction} Output strictly valid JSON matching the schema below.
 
 Required JSON Schema:
 {{
@@ -94,7 +97,8 @@ Required JSON Schema:
     "Financial_Motive": "string (High/Medium/Low)",
     "Violence": "string (Yes/No)",
     "Group_Size": 0
-  }}
+  }},
+  "AI_Summary": ["string (bullet point 1)", "string (bullet point 2)"]
 }}
 """)
     extract_chain = extract_prompt | llm | StrOutputParser()
@@ -102,7 +106,8 @@ Required JSON Schema:
         "metadata_chunk": chunks["metadata_chunk"],
         "parties_chunk": chunks["parties_chunk"],
         "narrative_chunk": chunks["narrative_chunk"],
-        "is_kannada": str(chunks["is_kannada"])
+        "is_kannada": str(chunks["is_kannada"]),
+        "lang_instruction": lang_instruction
     })
     
     parsed_data = {}

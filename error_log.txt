@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "d:\DATASET\PROJECT\ksp-nexus-backend\api_chat.py", line 210, in chat_endpoint
+    df_index = mo_linking.load_mo_index()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\DATASET\PROJECT\ksp-nexus-backend\mo_linking.py", line 53, in load_mo_index
+    return pickle.load(f)
+           ^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'pyarrow'

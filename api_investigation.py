@@ -35,6 +35,7 @@ def get_inv_db():
             content TEXT,
             confidence_score TEXT,
             rationale TEXT,
+            citations TEXT,
             created_at TEXT
         );
         CREATE TABLE IF NOT EXISTS investigation_cdr_networks (
@@ -75,6 +76,10 @@ def create_investigation(req: InvestigationCreate, current_user: dict = Depends(
               (inv_id, current_user["username"], req.title, now))
     conn.commit()
     conn.close()
+    
+    from api_audit import log_audit
+    log_audit(current_user["username"], current_user.get("role", "User"), "CREATE_INVESTIGATION", inv_id)
+    
     return {"id": inv_id, "title": req.title, "created_at": now}
 
 @router.get("/api/investigation/list")
@@ -100,8 +105,17 @@ def get_investigation(inv_id: str, current_user: dict = Depends(get_current_user
     c.execute("SELECT * FROM investigation_bookmarks WHERE investigation_id = ?", (inv_id,))
     bookmarks = [dict(r) for r in c.fetchall()]
     
+    import json
     c.execute("SELECT * FROM investigation_messages WHERE investigation_id = ? ORDER BY id ASC", (inv_id,))
-    messages = [dict(r) for r in c.fetchall()]
+    messages = []
+    for r in c.fetchall():
+        msg = dict(r)
+        if msg.get('citations'):
+            try:
+                msg['citations'] = json.loads(msg['citations'])
+            except:
+                msg['citations'] = []
+        messages.append(msg)
     
     conn.close()
     return {
@@ -166,7 +180,8 @@ Respond strictly with a JSON object (no markdown code blocks, just raw JSON). Us
 {{
   "response": "Your detailed professional response formatted in Markdown (use tables if comparing).",
   "confidence_score": "e.g., 92%",
-  "confidence_rationale": "Brief 1-sentence reasoning for why you are confident or not confident based on the evidence."
+  "confidence_rationale": "Brief 1-sentence reasoning for why you are confident or not confident based on the evidence.",
+  "citations": ["FIR 1234", "Phone Number 9876543210", "Common Vehicle"]
 }}
 """
     try:
@@ -188,8 +203,9 @@ Respond strictly with a JSON object (no markdown code blocks, just raw JSON). Us
         c.execute("INSERT INTO investigation_messages (investigation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
                   (inv_id, "User", req.message, now))
         # Save AI message
-        c.execute("INSERT INTO investigation_messages (investigation_id, role, content, confidence_score, rationale, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                  (inv_id, "AI", data.get("response", ""), data.get("confidence_score", ""), data.get("confidence_rationale", ""), now))
+        import json
+        c.execute("INSERT INTO investigation_messages (investigation_id, role, content, confidence_score, rationale, citations, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (inv_id, "AI", data.get("response", ""), data.get("confidence_score", ""), data.get("confidence_rationale", ""), json.dumps(data.get("citations", [])), now))
         
         conn.commit()
         conn.close()
@@ -452,6 +468,8 @@ Recommendation: Perform subscriber lookup and historical CDR analysis.
         now = datetime.datetime.utcnow().isoformat()
         c.execute("INSERT INTO investigation_messages (investigation_id, role, content, confidence_score, rationale, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                   (inv_id, "AI", final_report, "High", "Based on deterministic Pandas parsing and LLM Entity Resolution.", now))
+        from api_audit import log_audit
+        log_audit(current_user["username"], current_user.get("role", "User"), "CDR_ANALYZE", inv_id)
         conn.commit()
         conn.close()
         
@@ -464,4 +482,3 @@ Recommendation: Perform subscriber lookup and historical CDR analysis.
         except: pass
         if 'conn' in locals(): conn.close()
         raise HTTPException(status_code=500, detail=str(e))
-
