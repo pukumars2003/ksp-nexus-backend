@@ -29,15 +29,13 @@ async def process_ocr(
     
     if filename.endswith('.pdf'):
         try:
-            import pypdfium2 as pdfium
-            import io
-            pdf = pdfium.PdfDocument(content)
+            import fitz
+            pdf = fitz.open(stream=content, filetype="pdf")
             for i in range(min(3, len(pdf))): # Limit to 3 pages for cost/context limits
-                page = pdf.get_page(i)
-                pil_image = page.render(scale=2.0).to_pil()
-                buf = io.BytesIO()
-                pil_image.save(buf, format='JPEG')
-                b64_images.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+                page = pdf[i]
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                img_data = pix.tobytes("jpeg")
+                b64_images.append(base64.b64encode(img_data).decode('utf-8'))
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"PDF parsing error: {str(e)}")
     else:

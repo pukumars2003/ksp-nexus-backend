@@ -108,16 +108,21 @@ async def get_chat_history(session_id: str = None, user: dict = Depends(get_curr
 
 
 @router.post("/api/chat")
-async def chat_endpoint(
-    text: str = Form(default=""),
-    language: str = Form(default="en"),
-    use_semantic: bool = Form(default=True),
-    district: str = Form(default="All"),
-    crime_type: str = Form(default="All"),
-    session_id: str = Form(default=""),
-    audio: Optional[UploadFile] = File(default=None),
-    user: dict = Depends(get_current_user)
+async def chat_interaction(
+    request: Request,
+    text: Optional[str] = Form(None),
+    audio: Optional[UploadFile] = File(None),
+    language: str = Form("en"),
+    session_id: Optional[str] = Form(None),
+    use_semantic: Optional[bool] = Form(True),
+    district: str = Form("All"),
+    crime_type: str = Form("All"),
+    current_user: dict = Depends(get_current_user)
 ):
+    if current_user.get("role") == "Crime Analyst":
+        raise HTTPException(status_code=403, detail="Crime Analysts do not have access to the Investigation Chat AI.")
+        
+    username = current_user["username"]
     from state import app_state
     
     llm = app_state.get("chat_llm")
