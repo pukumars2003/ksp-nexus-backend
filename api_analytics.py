@@ -48,7 +48,12 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         df = df[df["District_Name"] == user["jurisdiction"]]
     
     if df is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
+        return {
+            "total_firs": 0,
+            "high_risk_offenders": 0,
+            "crimes_by_district": [],
+            "recent_trends": []
+        }
         
     return get_analytics(df)
 
@@ -67,7 +72,7 @@ async def get_risk_offenders(user: dict = Depends(get_current_user)):
         
     df = app_state.get("df")
     if df is None:
-        raise HTTPException(status_code=500, detail="Database not initialized")
+        return []
         
     if user["jurisdiction"] != "All":
         df = df[df["District_Name"] == user["jurisdiction"]]

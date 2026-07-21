@@ -14,8 +14,7 @@ def get_predictive_warnings(current_user: dict = Depends(get_current_user)):
     from main import app_state
     df = app_state.get("df")
     if df is None or df.empty:
-        raise HTTPException(status_code=500, detail="Data not loaded")
-
+        return {"spikes": [], "similarity_warnings": []}
     # 1. Temporal Spikes (Simple Anomaly Detection)
     # Group by month and crime type
     try:
