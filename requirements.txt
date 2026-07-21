@@ -17,6 +17,6 @@ deep-translator==1.11.4
 edge-tts==6.1.10
 networkx==3.2.1
 pymupdf==1.24.11
-schedule==1.2.1
-reportlab==4.1.0    fpdf2==2.8.0
+reportlab==4.1.0
 fpdf2==2.8.0
+schedule==1.2.1
