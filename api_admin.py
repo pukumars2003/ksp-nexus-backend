@@ -4,9 +4,7 @@ import io
 import os
 import time
 
-# To access the global df
-import main
-
+# To access the global df (imported inside function to avoid circular import)
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
 @router.post("/ingest")
@@ -36,6 +34,7 @@ async def ingest_csv(file: UploadFile = File(...)):
             new_df["Score"] = 0.0
 
         # Append to master dataframe in memory
+        import main
         main.app_state["df"] = pd.concat([main.app_state["df"], new_df], ignore_index=True)
         
         # Overwrite the actual .pkl file so it persists and is used as Context Memory
