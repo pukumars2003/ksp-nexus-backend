@@ -73,9 +73,9 @@ async def process_ocr(
         raise HTTPException(status_code=500, detail=f"OCR API Error: {resp.text}")
         
     extracted_text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    source = "qwen2_vl_openrouter"
+    source = "gpt-4o-mini"
 
-    # 3. Multi-LLM Auditor Workflow
+    # 3. Multi-LLM Parallel Auditor Workflow
     debate_text = ""
     try:
         from state import app_state
@@ -85,19 +85,24 @@ async def process_ocr(
         if llm1 and llm2 and extracted_text.strip():
             lang_instruction = f" Respond completely in the language corresponding to language code '{language}' (e.g. 'hi' for Hindi, 'kn' for Kannada)." if language != 'en' else ""
             
-            # Investigator 1: Summarizes
-            prompt1 = f"You are Investigator 1. Read the following raw OCR extracted from a {doc_type}. Summarize the key facts, entities, and events mentioned. Keep it structured and concise.{lang_instruction}\n\nRAW OCR:\n{extracted_text}"
-            res1 = llm1.invoke(prompt1)
-            summary1 = res1.content
+            # Independent prompts so they can run in parallel
+            prompt1 = f"You are Investigator 1. Extract only the Key Entities, Suspects, and Evidence from this raw OCR.{lang_instruction}\n\nRAW OCR:\n{extracted_text}"
+            prompt2 = f"You are Investigator 2. Extract only the Timeline of Events and Modus Operandi from this raw OCR.{lang_instruction}\n\nRAW OCR:\n{extracted_text}"
             
-            # Investigator 2: Audits
-            prompt2 = f"You are Investigator 2 (The Auditor). Your job is to fact-check Investigator 1's summary against the raw OCR text. Look for missing details, hallucinations, or contradictions. Be critical and thorough.{lang_instruction}\n\nDOCUMENT TYPE: {doc_type}\n\nRAW OCR:\n{extracted_text}\n\nINVESTIGATOR 1 SUMMARY:\n{summary1}\n\nProvide your audit report."
-            res2 = llm2.invoke(prompt2)
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future1 = executor.submit(llm1.invoke, prompt1)
+                future2 = executor.submit(llm2.invoke, prompt2)
+                
+                res1 = future1.result(timeout=15)
+                res2 = future2.result(timeout=15)
+                
+            summary1 = res1.content
             audit2 = res2.content
             
-            debate_text = f"**Investigator 1 (Summary):**\n{summary1}\n\n**Investigator 2 (Audit):**\n{audit2}"
+            debate_text = f"**Investigator 1 (Entities & Evidence):**\n{summary1}\n\n**Investigator 2 (Timeline & MO):**\n{audit2}"
     except Exception as e:
-        print(f"Error in LLM audit workflow: {e}")
+        print(f"Error in parallel LLM workflow: {e}")
 
     return {
         "success": True, 

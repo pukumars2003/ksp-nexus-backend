@@ -155,8 +155,8 @@ async def chat_interaction(
         except Exception:
             glossary = {}
     
-    if df is not None and user["jurisdiction"] != "All":
-        df = df[df["District_Name"] == user["jurisdiction"]]
+    if df is not None and current_user["jurisdiction"] != "All":
+        df = df[df["District_Name"] == current_user["jurisdiction"]]
     
     if not llm or df is None:
         raise HTTPException(status_code=500, detail="Models or database not loaded")
@@ -399,6 +399,12 @@ CRITICAL RULES:
 5. DO NOT alter the capitalization or remove details from the IO Names (e.g., keep 'Y S HANUMANTHAPPA (PI)' exactly as provided).
 6. Do NOT use markdown bolding (**text**) or headers (# text). Keep the text clean.
 7. Respond in language '{detected_lang}'.
+8. YOU MUST OUTPUT STRICTLY IN JSON FORMAT matching this schema:
+{{
+  "response": "Your actual answer to the user.",
+  "confidence_score": 95, 
+  "citations": "Matched with FIR 1234, BNS Section 302..."
+}}
 
 CHAT HISTORY:
 {history_str}
@@ -424,9 +430,24 @@ Query: {user_query}"""
 
         if not fir_data:
             response = llm.invoke(sys_prompt)
-            response_text = response.content if hasattr(response, "content") else str(response)
+            content = response.content if hasattr(response, "content") else str(response)
+            try:
+                import json
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0]
+                parsed = json.loads(content.strip())
+                response_text = parsed.get("response", "")
+                confidence_score = parsed.get("confidence_score", 0)
+                citations = parsed.get("citations", "")
+            except Exception as e:
+                response_text = content
+                confidence_score = 0
+                citations = "Could not parse citations."
+                
             mem["history"].append({"role": "User", "content": final_query_en})
-            mem["history"].append({"role": "AI", "content": response_text})
+            mem["history"].append({"role": "AI", "content": response_text, "confidence_score": confidence_score, "citations": citations})
         
         # Auto-title generation for new chats
         new_title = None
@@ -471,6 +492,8 @@ Query: {user_query}"""
         return {
             "response": response_text,
             "fir_data": locals().get("fir_data"),
+            "confidence_score": locals().get("confidence_score", 0),
+            "citations": locals().get("citations", ""),
             "detected_query": user_query,
             "detected_lang": detected_lang,
             "audio_url": audio_url,
