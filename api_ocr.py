@@ -56,7 +56,7 @@ async def process_ocr(
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "qwen/qwen-2-vl-72b-instruct",
+        "model": "openai/gpt-4o-mini",
         "max_tokens": 4000,
         "messages": [
             {
