@@ -11,7 +11,7 @@ class PredictiveWarningsResponse(BaseModel):
 
 @router.get("/api/analytics/predictive")
 def get_predictive_warnings(current_user: dict = Depends(get_current_user)):
-    from main import app_state
+    from state import app_state
     df = app_state.get("df")
     if df is None or df.empty:
         return {"spikes": [], "similarity_warnings": []}

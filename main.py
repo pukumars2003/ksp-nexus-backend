@@ -11,7 +11,7 @@ import os
 from parser import parse_fir
 
 # Global State for models and data
-app_state = {}
+from state import app_state
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -33,13 +33,13 @@ async def lifespan(app: FastAPI):
         base_url="https://openrouter.ai/api/v1"
     )
     
-    print("Loading KSP Prototype Data...")
+    print("Loading KSP Prototype Data synchronously...")
     try:
         local_path = os.path.join(os.path.dirname(__file__), "ksp_cleaned_prototype.pkl")
         fallback_path = os.path.join(os.path.dirname(__file__), "..", "ksp_prototype_data", "ksp_cleaned_prototype.pkl")
         data_path = local_path if os.path.exists(local_path) else fallback_path
         app_state["df"] = pd.read_pickle(data_path)
-        print(f"Loaded {len(app_state['df'])} records from PKL.")
+        print(f"Loaded {len(app_state['df'])} records from PKL synchronously.")
     except Exception as e:
         print(f"Warning: Could not load data. {e}")
         app_state["df"] = pd.DataFrame()

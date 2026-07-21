@@ -80,7 +80,7 @@ async def process_ocr(
     # 3. Multi-LLM Auditor Workflow
     debate_text = ""
     try:
-        from main import app_state
+        from state import app_state
         llm1 = app_state.get("analyze_llm") # OpenRouter
         llm2 = app_state.get("chat_llm")    # Groq Llama 3.3
         

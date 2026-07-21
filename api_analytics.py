@@ -41,7 +41,7 @@ def get_analytics(df: pd.DataFrame) -> Dict[str, Any]:
 @router.get("/api/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
     # To avoid circular imports, we import app_state here
-    from main import app_state
+    from state import app_state
     
     df = app_state.get("df")
     if df is not None and user["jurisdiction"] != "All":
@@ -59,7 +59,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
 
 @router.get("/api/analytics/risk-offenders")
 async def get_risk_offenders(user: dict = Depends(get_current_user)):
-    from main import app_state
+    from state import app_state
     import sys
     import os
     
@@ -94,7 +94,7 @@ class AnalyticsFilter(BaseModel):
 
 @router.post("/api/analytics/filtered")
 async def get_filtered_analytics(filters: AnalyticsFilter, user: dict = Depends(get_current_user)):
-    from main import app_state
+    from state import app_state
     df = app_state.get("df")
     
     if df is not None and user["jurisdiction"] != "All":

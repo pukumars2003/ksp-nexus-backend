@@ -142,7 +142,7 @@ def add_bookmark(inv_id: str, req: BookmarkAdd, current_user: dict = Depends(get
 
 @router.post("/api/investigation/{inv_id}/chat")
 def chat_investigation(inv_id: str, req: InvestigationChatRequest, current_user: dict = Depends(get_current_user)):
-    from main import app_state
+    from state import app_state
     llm = app_state.get("chat_llm")
     if not llm:
         raise HTTPException(status_code=500, detail="LLM not loaded")
@@ -234,7 +234,7 @@ def get_network(inv_id: str, current_user: dict = Depends(get_current_user)):
         
     bookmark_text = "\n\n".join([f"FIR {b['fir_id']}:\n{b['text_snippet']}" for b in bookmarks])
     
-    from main import app_state
+    from state import app_state
     llm = app_state.get("chat_llm")
     if not llm:
         import os
@@ -413,7 +413,7 @@ async def analyze_cdr(inv_id: str, file: UploadFile = File(...), current_user: d
         c.execute("SELECT text_snippet FROM investigation_bookmarks WHERE investigation_id = ?", (inv_id,))
         bookmarks = "\n".join([b['text_snippet'] for b in c.fetchall()])
         
-        from main import app_state
+        from state import app_state
         llm = app_state.get("chat_llm")
         
         if llm:

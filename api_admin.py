@@ -34,8 +34,8 @@ async def ingest_csv(file: UploadFile = File(...)):
             new_df["Score"] = 0.0
 
         # Append to master dataframe in memory
-        import main
-        main.app_state["df"] = pd.concat([main.app_state["df"], new_df], ignore_index=True)
+        from state import app_state
+        app_state["df"] = pd.concat([app_state["df"], new_df], ignore_index=True)
         
         # Overwrite the actual .pkl file so it persists and is used as Context Memory
         local_path = os.path.join(os.path.dirname(__file__), "ksp_cleaned_prototype.pkl")
@@ -45,12 +45,12 @@ async def ingest_csv(file: UploadFile = File(...)):
         # Simulate processing time for realistic UI feedback
         time.sleep(2)
         
-        main.app_state["df"].to_pickle(data_path)
+        app_state["df"].to_pickle(data_path)
         
         return {
             "status": "success", 
             "message": f"Successfully ingested {len(new_df)} records. Master Context Memory (.pkl) regenerated.",
-            "total_records_now": len(main.app_state["df"])
+            "total_records_now": len(app_state["df"])
         }
         
     except Exception as e:

@@ -55,7 +55,7 @@ async def delete_chat_session(session_id: str, user: dict = Depends(get_current_
     conn.execute("DELETE FROM chat_sessions WHERE session_id = ? AND username = ?", (session_id, username))
     conn.commit()
     conn.close()
-    from main import app_state
+    from state import app_state
     if "chat_sessions" in app_state and session_id in app_state["chat_sessions"]:
         del app_state["chat_sessions"][session_id]
     return {"status": "success"}
@@ -78,7 +78,7 @@ async def get_chat_history(session_id: str = None, user: dict = Depends(get_curr
     if not session_id:
         return {"history": []}
         
-    from main import app_state
+    from state import app_state
     import sqlite3, json, os
     
     db_path = os.path.join(os.path.dirname(__file__), 'chat.db')
@@ -118,7 +118,7 @@ async def chat_endpoint(
     audio: Optional[UploadFile] = File(default=None),
     user: dict = Depends(get_current_user)
 ):
-    from main import app_state
+    from state import app_state
     
     llm = app_state.get("chat_llm")
     if not llm:
