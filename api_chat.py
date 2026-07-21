@@ -206,7 +206,7 @@ async def chat_interaction(
 
     
     # --- 1.5 MEMORY & INTENT ---
-    username = user.get("username", "Officer")
+    username = current_user.get("username", "Officer")
     
     import sqlite3, json, uuid
     
@@ -399,7 +399,8 @@ CRITICAL RULES:
 5. DO NOT alter the capitalization or remove details from the IO Names (e.g., keep 'Y S HANUMANTHAPPA (PI)' exactly as provided).
 6. Do NOT use markdown bolding (**text**) or headers (# text). Keep the text clean.
 7. Respond in language '{detected_lang}'.
-8. YOU MUST OUTPUT STRICTLY IN JSON FORMAT matching this schema:
+8. If the user asks questions completely unrelated to policing, investigations, crime, or the provided context (e.g., asking to write a resume, coding, or explaining software vulnerabilities), strictly refuse to answer. Reply exactly with: "Security Policy Violation: I am a Police Intelligence Copilot and can only assist with investigative and law enforcement matters."
+9. YOU MUST OUTPUT STRICTLY IN JSON FORMAT matching this schema:
 {{
   "response": "Your actual answer to the user.",
   "confidence_score": 95, 

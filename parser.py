@@ -11,24 +11,6 @@ def get_embedder():
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer('all-MiniLM-L6-v2')
 
-def preprocess_fir(text: str) -> dict:
-    metadata_match = re.search(r'(.*?)(?:5\.\s*Place of Occurrence|6\.\s*Complainant)', text, re.DOTALL | re.IGNORECASE)
-    parties_match = re.search(r'(6\.\s*Complainant.*?)(?:8\.\s*Particulars|9\.\s*Inquest|10\.\s*F\.I\.R|12\.\s*First information)', text, re.DOTALL | re.IGNORECASE)
-    narrative_match = re.search(r'(?:10\.\s*F\.I\.R\s*Contents|12\.\s*First information contents)(.*)', text, re.DOTALL | re.IGNORECASE)
-    
-    metadata = metadata_match.group(1).strip() if metadata_match else "N/A"
-    parties = parties_match.group(1).strip() if parties_match else "N/A"
-    narrative = narrative_match.group(1).strip() if narrative_match else text
-    
-    is_kannada = bool(re.search(r'[\u0C80-\u0CFF]', narrative))
-    
-    return {
-        "metadata_chunk": metadata,
-        "parties_chunk": parties,
-        "narrative_chunk": narrative,
-        "is_kannada": is_kannada
-    }
-
 def parse_fir(llm, new_fir_text: str, df: pd.DataFrame = None, language: str = "en") -> dict:
     if len(new_fir_text.strip()) < 50:
         return {
@@ -45,28 +27,25 @@ def parse_fir(llm, new_fir_text: str, df: pd.DataFrame = None, language: str = "
             "Similar_Cases": []
         }
 
-    chunks = preprocess_fir(new_fir_text)
-    lang_instruction = f"Output all string values in the language corresponding to language code '{language}' (e.g. 'hi' for Hindi, 'kn' for Kannada) but keep the JSON keys in English." if language != "en" else "Output in English."
+    import re
+    fir_match = re.search(r'```(.*?)```', new_fir_text, re.DOTALL)
+    clean_fir_text = fir_match.group(1).strip() if fir_match else new_fir_text
+
+    lang_instruction = f"Output analytical values in the language corresponding to language code '{language}'. However, preserve names, locations, and crime types in their original language alongside English (e.g., 'ದರೋಡೆ (Robbery)'). Keep JSON keys in English."
     
     extract_prompt = ChatPromptTemplate.from_template("""
-You are an expert criminal intelligence analyst. Parse the FIR chunks into structured JSON format. 
+You are an expert criminal intelligence analyst. Parse the FIR text into a structured JSON format.
 
---- FIR METADATA CHUNK ---
-{metadata_chunk}
-
---- FIR PARTIES CHUNK ---
-{parties_chunk}
-
---- FIR NARRATIVE CHUNK ---
-{narrative_chunk}
+--- FULL FIR RAW TEXT ---
+{raw_text}
 
 CRITICAL RULES:
-1. ONLY extract information that is explicitly stated in the chunks. DO NOT hallucinate.
+1. ONLY extract information that is explicitly stated in the text. Look closely at the top section for Crime No, District, Police Station, and Date.
 2. MISSING VALUES: If a value is missing, output "N/A".
 3. CRIME TYPE: Be specific. If it is a house theft, classify as 'House Theft' or 'Residential Burglary' (ಮನೆ ಕಳ್ಳತನ), not just 'Theft'. Differentiate Theft (ಕಳ್ಳತನ) from Robbery (ದರೋಡೆ).
 4. PARTIES & ROLES: Include their designations/roles.
 5. INVESTIGATING OFFICER: Look carefully at the end of the FIR for "Name: " and their rank (e.g., 'SURESH.W - PSI').
-6. ACTS & SECTIONS: Extract exactly what is written from the METADATA CHUNK.
+6. ACTS & SECTIONS: Extract exactly the Acts and Sections written near the beginning of the FIR (e.g. BNS or IPC sections).
 7. FINANCIAL & PROPERTY DETAILS: Extract property weights/values EXACTLY as written in the text (e.g., '550 gms', do NOT truncate to '55g'). Do not mistranslate OCR artifacts (e.g., translate gold rings as 'ಬಂಗಾರದ ಉಂಗುರ', avoid nonsensical translations like 'ಬಿರಿಯಾಣಿ').
 8. TIMELINE: Extract all specific events if present. Distinguish between 'Incident Time', 'FIR Registered/Received', 'Read Over', and 'Dispatch to Court' with their respective exact times.
 9. BEHAVIOR PROFILE: Note that this is an analytical derived profile.
@@ -103,10 +82,7 @@ Required JSON Schema:
 """)
     extract_chain = extract_prompt | llm | StrOutputParser()
     raw_output = extract_chain.invoke({
-        "metadata_chunk": chunks["metadata_chunk"],
-        "parties_chunk": chunks["parties_chunk"],
-        "narrative_chunk": chunks["narrative_chunk"],
-        "is_kannada": str(chunks["is_kannada"]),
+        "raw_text": clean_fir_text,
         "lang_instruction": lang_instruction
     })
     

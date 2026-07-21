@@ -42,7 +42,7 @@ async def process_ocr(
         b64_images.append(base64.b64encode(content).decode('utf-8'))
 
     content_list = [
-        {"type": "text", "text": "Extract all text from the provided document images exactly as it appears. Ensure you preserve formatting. Do not output anything else but the extracted text."}
+        {"type": "text", "text": "You are a strict Police Intelligence AI. First, analyze the document images to determine if they are relevant to law enforcement, investigations, policing, crime, evidence, identity verification, CCTV footage, or legal proceedings. If the document is clearly irrelevant (e.g., a resume, marketing flyer, random webpage, or technical security vulnerability report), you MUST output ONLY the exact string: 'REJECTED_DOCUMENT_UNAUTHORIZED' and nothing else. If it is a valid investigative or police document, extract all text from the provided document images exactly as it appears, preserving formatting. Do not output anything else but the extracted text in this case."}
     ]
     for b64 in b64_images:
         content_list.append({
@@ -73,6 +73,10 @@ async def process_ocr(
         raise HTTPException(status_code=500, detail=f"OCR API Error: {resp.text}")
         
     extracted_text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+    
+    if "REJECTED_DOCUMENT_UNAUTHORIZED" in extracted_text:
+        raise HTTPException(status_code=400, detail="Security Policy Violation: Uploaded document is not relevant to police investigations (e.g., resume, vulnerability report, unrelated page).")
+
     source = "gpt-4o-mini"
 
     # 3. Multi-LLM Parallel Auditor Workflow
@@ -91,7 +95,8 @@ async def process_ocr(
             
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                future1 = executor.submit(llm1.invoke, prompt1)
+                # Use Groq (llm2) for BOTH tasks because OpenRouter (llm1) adds 10+ seconds of latency!
+                future1 = executor.submit(llm2.invoke, prompt1)
                 future2 = executor.submit(llm2.invoke, prompt2)
                 
                 res1 = future1.result(timeout=15)
