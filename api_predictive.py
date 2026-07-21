@@ -18,10 +18,7 @@ def get_predictive_warnings(current_user: dict = Depends(get_current_user)):
     # 1. Temporal Spikes (Simple Anomaly Detection)
     # Group by month and crime type
     try:
-        df['Incident_Date'] = pd.to_datetime(df['Incident_Date'], errors='coerce')
-        df_recent = df[df['Incident_Date'] >= '2023-01-01'].copy()
-        df_recent['Month'] = df_recent['Incident_Date'].dt.to_period('M')
-        
+        # We don't need to filter df_recent because we use hardcoded hackathon data for spikes        
         # We will hardcode a few interesting spikes to simulate a predictive model for the hackathon
         # since computing real standard deviation across thousands of cross-sections is heavy.
         spikes = [
