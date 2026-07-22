@@ -1,0 +1,14 @@
+{
+    "chat_model": {
+        "provider": "Groq",
+        "model_name": "llama-3.3-70b-versatile",
+        "api_key": "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",
+        "base_url": ""
+    },
+    "analyze_model": {
+        "provider": "OpenRouter",
+        "model_name": "openrouter/free",
+        "api_key": "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",
+        "base_url": "https://openrouter.ai/api/v1"
+    }
+}

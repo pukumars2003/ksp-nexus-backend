@@ -18,20 +18,55 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Loading Chat LLM (Groq)...")
-    app_state["chat_llm"] = ChatGroq(
-        model="llama-3.3-70b-versatile", 
-        temperature=0.0,
-        api_key=os.environ.get("GROQ_API_KEY", "")
-    )
+    print("Loading AI Models Configuration...")
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), "models.json")
+        with open(config_path, "r", encoding="utf-8") as f:
+            models_config = json.load(f)
+    except Exception as e:
+        print(f"Error loading models.json, falling back to ENV: {e}")
+        models_config = {
+            "chat_model": {
+                "provider": "Groq",
+                "model_name": "llama-3.3-70b-versatile",
+                "api_key": os.environ.get("GROQ_API_KEY", ""),
+                "base_url": ""
+            },
+            "analyze_model": {
+                "provider": "OpenRouter",
+                "model_name": "openrouter/free",
+                "api_key": os.environ.get("OPENROUTER_API_KEY", ""),
+                "base_url": "https://openrouter.ai/api/v1"
+            }
+        }
     
-    print("Loading Analyze LLM (OpenRouter)...")
-    app_state["analyze_llm"] = ChatOpenAI(
-        model="openrouter/free", 
-        temperature=0.0,
-        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-        base_url="https://openrouter.ai/api/v1"
-    )
+    def init_llm(config):
+        provider = config.get("provider", "Groq")
+        if provider == "Groq":
+            return ChatGroq(
+                model=config.get("model_name", "llama-3.3-70b-versatile"),
+                temperature=0.0,
+                api_key=config.get("api_key", ""),
+                base_url=config.get("base_url") if config.get("base_url") else None
+            )
+        elif provider == "OpenRouter" or provider == "OpenAI":
+            return ChatOpenAI(
+                model=config.get("model_name", "openrouter/free"),
+                temperature=0.0,
+                api_key=config.get("api_key", ""),
+                base_url=config.get("base_url") if config.get("base_url") else None
+            )
+        elif provider == "Local":
+            return ChatOpenAI(
+                model=config.get("model_name", "llama3"),
+                temperature=0.0,
+                api_key=config.get("api_key", "ollama"),
+                base_url=config.get("base_url", "http://localhost:11434/v1")
+            )
+        return None
+
+    app_state["chat_llm"] = init_llm(models_config.get("chat_model", {}))
+    app_state["analyze_llm"] = init_llm(models_config.get("analyze_model", {}))
     
     print("Loading KSP Prototype Data synchronously...")
     try:
