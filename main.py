@@ -42,18 +42,24 @@ async def lifespan(app: FastAPI):
     
     def init_llm(config):
         provider = config.get("provider", "Groq")
+        api_key = config.get("api_key", "")
+        
         if provider == "Groq":
+            if not api_key:
+                api_key = os.environ.get("GROQ_API_KEY")
             return ChatGroq(
                 model=config.get("model_name", "llama-3.3-70b-versatile"),
                 temperature=0.0,
-                api_key=config.get("api_key", ""),
+                api_key=api_key,
                 base_url=config.get("base_url") if config.get("base_url") else None
             )
         elif provider == "OpenRouter" or provider == "OpenAI":
+            if not api_key:
+                api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
             return ChatOpenAI(
                 model=config.get("model_name", "openrouter/free"),
                 temperature=0.0,
-                api_key=config.get("api_key", ""),
+                api_key=api_key,
                 base_url=config.get("base_url") if config.get("base_url") else None
             )
         elif provider == "Local":
