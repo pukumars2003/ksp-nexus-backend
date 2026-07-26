@@ -1,0 +1,11 @@
+venv/
+.venv/
+__pycache__/
+.git/
+.github/
+ksp-backend/
+*.csv
+*.zip
+*.log
+debug_chat.txt
+error_log.txt
