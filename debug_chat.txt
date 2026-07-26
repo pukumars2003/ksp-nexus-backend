@@ -1,11 +1,11 @@
-Query: Kesuvala is located in Edasavarta Adhinare Isu of Ballari District Gandhinagar Police Station.
+Query: Can you please give me the cases in Ballari APMC market in 2016?
 Extraction Text: ```json
 {
   "district": "Ballari",
   "unit": null,
-  "year": null,
+  "year": 2016,
   "crime_types": null
 }
 ```
-Parsed Filters: {'district': 'Ballari', 'unit': None, 'year': None, 'crime_types': None}
-Has filters: True. Cases found: 28426
+Parsed Filters: {'district': 'Ballari', 'unit': None, 'year': 2016, 'crime_types': None}
+Has filters: True. Cases found: 3566

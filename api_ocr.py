@@ -9,15 +9,16 @@ load_dotenv()
 
 router = APIRouter()
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-
 @router.post("/api/ocr")
 async def process_ocr(
     file: UploadFile = File(...),
     doc_type: str = Form("FIR"),
     language: str = Form("en")
 ):
-    if not OPENROUTER_API_KEY:
+    keys_to_try = [os.environ.get("OPENROUTER_API_KEY", ""), os.environ.get("OPENROUTER_API_KEY_2", "")]
+    keys_to_try = [k for k in keys_to_try if k]
+    
+    if not keys_to_try:
         raise HTTPException(status_code=500, detail="OpenRouter API key is missing from environment.")
 
     filename = file.filename.lower()
@@ -52,12 +53,11 @@ async def process_ocr(
         
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
         "model": "openai/gpt-4o-mini",
-        "max_tokens": 4000,
+        "max_tokens": 1000,
         "messages": [
             {
                 "role": "user",
@@ -67,10 +67,15 @@ async def process_ocr(
     }
 
     async with httpx.AsyncClient() as client:
-        resp = await client.post(url, headers=headers, json=payload, timeout=90.0)
-        
-    if resp.status_code != 200:
-        raise HTTPException(status_code=500, detail=f"OCR API Error: {resp.text}")
+        resp = None
+        for attempt_key in keys_to_try:
+            headers["Authorization"] = f"Bearer {attempt_key}"
+            resp = await client.post(url, headers=headers, json=payload, timeout=90.0)
+            if resp.status_code == 200:
+                break
+                
+        if resp is None or resp.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"OCR API Error: {resp.text if resp else 'Unknown'}")
         
     extracted_text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
     

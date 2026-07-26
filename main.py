@@ -47,12 +47,41 @@ async def lifespan(app: FastAPI):
         if provider == "Groq":
             if not api_key:
                 api_key = os.environ.get("GROQ_API_KEY")
-            return ChatGroq(
+            
+            primary_llm = ChatGroq(
                 model=config.get("model_name", "llama-3.3-70b-versatile"),
                 temperature=0.0,
                 api_key=api_key,
                 base_url=config.get("base_url") if config.get("base_url") else None
             )
+            
+            # Build intelligent failover chain
+            fallbacks = []
+            
+            # 1st Fallback: Secondary Groq Key
+            api_key_2 = os.environ.get("GROQ_API_KEY_2")
+            if api_key_2:
+                fallbacks.append(ChatGroq(
+                    model=config.get("model_name", "llama-3.3-70b-versatile"),
+                    temperature=0.0,
+                    api_key=api_key_2,
+                    base_url=config.get("base_url") if config.get("base_url") else None
+                ))
+                
+            # 2nd Fallback: OpenRouter Free
+            or_key = os.environ.get("OPENROUTER_API_KEY")
+            if or_key:
+                fallbacks.append(ChatOpenAI(
+                    model="openrouter/free",
+                    temperature=0.0,
+                    api_key=or_key,
+                    base_url="https://openrouter.ai/api/v1"
+                ))
+                
+            if fallbacks:
+                return primary_llm.with_fallbacks(fallbacks)
+                
+            return primary_llm
         elif provider == "OpenRouter" or provider == "OpenAI":
             if not api_key:
                 api_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")

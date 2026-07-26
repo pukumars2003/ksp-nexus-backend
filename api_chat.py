@@ -128,10 +128,10 @@ async def chat_interaction(
     
     llm = app_state.get("chat_llm")
     if not llm:
-        from langchain_groq import ChatGroq
-        api_key = os.environ.get("GROQ_API_KEY", "")
+        from langchain_openai import ChatOpenAI
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
         if api_key:
-            llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0, api_key=api_key)
+            llm = ChatOpenAI(model="openrouter/free", temperature=0.0, api_key=api_key, base_url="https://openrouter.ai/api/v1")
 
     df = app_state.get("df")
     glossary = app_state.get("crime_glossary")
@@ -164,6 +164,7 @@ async def chat_interaction(
 
     user_query = text
     detected_lang = language
+    temp_wav = None
 
     # 1. Handle Audio Input (STT)
     if audio:
