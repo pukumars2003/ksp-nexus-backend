@@ -6,6 +6,7 @@ __pycache__/
 ksp-backend/
 *.csv
 *.zip
+!data.zip
 *.log
 debug_chat.txt
 error_log.txt
