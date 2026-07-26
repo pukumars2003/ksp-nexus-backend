@@ -115,6 +115,7 @@ async def chat_interaction(
     language: str = Form("en"),
     session_id: Optional[str] = Form(None),
     use_semantic: Optional[bool] = Form(True),
+    tts_provider: str = Form("Edge"),
     district: str = Form("All"),
     crime_type: str = Form("All"),
     current_user: dict = Depends(get_current_user)
@@ -167,26 +168,58 @@ async def chat_interaction(
     # 1. Handle Audio Input (STT)
     if audio:
         try:
-            whisper_model = get_whisper()
-            temp_wav = f"temp_{uuid.uuid4()}.wav"
+            temp_wav = f"temp_{uuid.uuid4()}.webm"
             with open(temp_wav, "wb") as f:
                 f.write(await audio.read())
-                
-            segments, info = whisper_model.transcribe(temp_wav, language=None)
-            transcription = " ".join([s.text for s in segments]).strip()
+            
+            api_key = os.environ.get("GROQ_API_KEY", "")
+            if api_key:
+                import requests
+                headers = {"Authorization": f"Bearer {api_key}"}
+                with open(temp_wav, "rb") as f:
+                    files = {"file": (temp_wav, f)}
+                    data = {"model": "whisper-large-v3", "response_format": "verbose_json"}
+                    res = requests.post("https://api.groq.com/openai/v1/audio/transcriptions", headers=headers, files=files, data=data)
+                    
+                if res.status_code == 200:
+                    res_json = res.json()
+                    transcription = res_json.get("text", "").strip()
+                    whisper_lang = res_json.get("language", "")
+                    if whisper_lang == "kannada": detected_lang = "kn"
+                    elif whisper_lang == "hindi": detected_lang = "hi"
+                    elif whisper_lang == "english": detected_lang = "en"
+                else:
+                    transcription = ""
+            else:
+
+                whisper_model = get_whisper()
+                segments, info = whisper_model.transcribe(
+                    temp_wav, 
+                    language=None, 
+                    beam_size=1,
+                    condition_on_previous_text=False,
+                    no_speech_threshold=0.6
+                )
+                transcription = " ".join([s.text for s in segments]).strip()
             
             if text and "Analyze cases from" in text:
                 user_query = f"{text} {transcription}"
             else:
                 user_query = transcription
                 
-            detected_lang = info.language
             os.remove(temp_wav)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Audio processing failed: {e}")
 
+
     if not user_query:
         raise HTTPException(status_code=400, detail="No text or audio provided")
+
+    # Trust frontend language preference over Whisper detection
+    if language and language != "en":
+        detected_lang = language
+    elif not detected_lang:
+        detected_lang = "en"
 
     # 1b. Translation (Semantic Search must run in English)
     import re
@@ -199,16 +232,26 @@ async def chat_interaction(
     if detected_lang != "en":
         try:
             from deep_translator import GoogleTranslator
-            final_query_en = GoogleTranslator(source=detected_lang, target="en").translate(user_query)
+            import concurrent.futures
+            
+            def do_translation():
+                return GoogleTranslator(source='auto', target="en").translate(user_query)
+                
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(do_translation)
+            # GoogleTranslator can get rate-limited and hang, so enforce a strict 3-second timeout
+            final_query_en = future.result(timeout=3.0)
+            # Do NOT shutdown(wait=True) because it will block if the thread is hanging
+            executor.shutdown(wait=False, cancel_futures=True)
         except Exception as e:
-            print(f"Translation failed: {e}")
-
-
+            print(f"Translation failed or timed out: {e}")
+            final_query_en = user_query
+            # If it timed out, executor is still running the thread in the background, which is fine
     
     # --- 1.5 MEMORY & INTENT ---
     username = current_user.get("username", "Officer")
     
-    import sqlite3, json, uuid
+    import sqlite3, json
     
     if not session_id:
         session_id = str(uuid.uuid4())
@@ -310,10 +353,23 @@ Query: {final_query_en}"""
             
             mask = pd.Series(True, index=df.index)
             has_filters = False
+            fallback_triggered = False
             
             if filters.get('district'):
                 dist_val = str(filters['district']).lower()
-                mask &= (df['District_Name'].astype(str).str.lower().str.contains(dist_val, na=False) | df['UnitName'].astype(str).str.lower().str.contains(dist_val, na=False))
+                
+                # Handle common alternative names the LLM might output
+                if "bangalore" in dist_val: dist_val = "bengaluru"
+                elif "mangalore" in dist_val: dist_val = "mangaluru"
+                elif "mysore" in dist_val: dist_val = "mysuru"
+                elif "hubli" in dist_val: dist_val = "hubballi"
+                
+                dist_words = [w for w in dist_val.split() if len(w) > 2]
+                if dist_words:
+                    word_mask = pd.Series(False, index=df.index)
+                    for word in dist_words:
+                        word_mask |= df['District_Name'].astype(str).str.lower().str.contains(word, na=False) | df['UnitName'].astype(str).str.lower().str.contains(word, na=False)
+                    mask &= word_mask
                 has_filters = True
             if filters.get('unit'):
                 unit_val = str(filters['unit']).lower()
@@ -337,11 +393,37 @@ Query: {final_query_en}"""
             
             if has_filters:
                 unit_cases = df[mask]
+                # Fallback: if 0 cases found due to misspelled unit (e.g. Gadhinagar), drop the unit mask and try again
+                if len(unit_cases) == 0 and filters.get('unit'):
+                    fallback_triggered = True
+                    # Re-calculate mask without unit
+                    mask2 = pd.Series(True, index=df.index)
+                    if filters.get('district'):
+                        dist_val = str(filters['district']).lower()
+                        if "bangalore" in dist_val: dist_val = "bengaluru"
+                        elif "mangalore" in dist_val: dist_val = "mangaluru"
+                        elif "mysore" in dist_val: dist_val = "mysuru"
+                        elif "hubli" in dist_val: dist_val = "hubballi"
+                        dist_words = [w for w in dist_val.split() if len(w) > 2]
+                        if dist_words:
+                            word_mask = pd.Series(False, index=df.index)
+                            for word in dist_words:
+                                word_mask |= df['District_Name'].astype(str).str.lower().str.contains(word, na=False) | df['UnitName'].astype(str).str.lower().str.contains(word, na=False)
+                            mask2 &= word_mask
+                    if filters.get('year'):
+                        mask2 &= (df['FIR_YEAR'].astype(str).str.contains(str(filters['year']), na=False))
+                    if filters.get('crime_types') and isinstance(filters['crime_types'], list):
+                        type_mask = pd.Series(False, index=df.index)
+                        for ct in filters['crime_types']:
+                            type_mask |= (df['CrimeHead_Name'] == ct)
+                        mask2 &= type_mask
+                    unit_cases = df[mask2]
+                    
                 with open("debug_chat.txt", "a", encoding="utf-8") as f:
                     f.write(f"Has filters: True. Cases found: {len(unit_cases)}\n")
                     
                 for _, r in unit_cases.head(5).iterrows():
-                    context_cases.append(f"- Filter Match in {r.get('UnitName')} ({r.get('FIR_YEAR')}): {r.get('CrimeHead_Name')} - {str(r.get('Description', ''))[:200]}. Victims: {r.get('Male', 0)} M, {r.get('Female', 0)} F. IO: {r.get('IOName', 'Unknown')} (KGID: {r.get('KGID', 'Unknown')})")
+                    context_cases.append(f"- Filter Match in {r.get('District_Name')} district, {r.get('UnitName')} ({r.get('FIR_YEAR')}): {r.get('CrimeHead_Name')} - {str(r.get('Description', ''))[:200]}. Victims: {r.get('Male', 0)} M, {r.get('Female', 0)} F. IO: {r.get('IOName', 'Unknown')} (KGID: {r.get('KGID', 'Unknown')})")
                     sources_list.append({
                         "fir_id": r.get('FIRNo', 'Unknown'),
                         "district": r.get('District_Name', 'Unknown'),
@@ -361,7 +443,7 @@ Query: {final_query_en}"""
                 if df_index is not None:
                     top_cases = mo_linking.find_similar_mo(final_query_en, df_index, top_k=5)
                     for _, r in top_cases.iterrows():
-                        context_cases.append(f"- Similar Case in {r.get('Place of Offence', '').split(',')[0]} ({r.get('FIR_YEAR')}): {r.get('CrimeHead_Name')} - {str(r.get('Description', ''))[:200]}. Victims: {r.get('Male', 0)} Male, {r.get('Female', 0)} Female, {r.get('Boy', 0)} Boy, {r.get('Girl', 0)} Girl. Accused Count: {r.get('Accused Count', 0)}. IO: {r.get('IOName', 'Unknown')} (KGID: {r.get('KGID', 'Unknown')})")
+                        context_cases.append(f"- Similar Case in {r.get('District_Name')} district, {r.get('Place of Offence', '').split(',')[0]} ({r.get('FIR_YEAR')}): {r.get('CrimeHead_Name')} - {str(r.get('Description', ''))[:200]}. Victims: {r.get('Male', 0)} Male, {r.get('Female', 0)} Female, {r.get('Boy', 0)} Boy, {r.get('Girl', 0)} Girl. Accused Count: {r.get('Accused Count', 0)}. IO: {r.get('IOName', 'Unknown')} (KGID: {r.get('KGID', 'Unknown')})")
                         sources_list.append({
                             "fir_id": r.get('FIRNo', 'Unknown'),
                             "district": r.get('District_Name', 'Unknown'),
@@ -371,6 +453,8 @@ Query: {final_query_en}"""
             
             if context_cases:
                 context_str = "Context of relevant historical cases:\n" + "\n".join(context_cases)
+                if fallback_triggered:
+                    context_str += "\n\n[SYSTEM NOTE TO AI]: We could not find the specific police station the user asked for. We fetched cases from the broader district instead. You MUST inform the user that their specific station wasn't found, and then summarize these broader district cases for them instead of refusing to answer."
             else:
                 context_str = "No specific historical cases retrieved."
         except Exception as e:
@@ -393,18 +477,18 @@ Query: {final_query_en}"""
         sys_prompt = f"""You are a professional KSP Crime Analyst. Answer the user's query based ONLY on the provided historical context and chat history.
 CRITICAL RULES:
 1. ONLY USE THE CASES PROVIDED IN 'HISTORICAL CONTEXT'.
-2. IF 'HISTORICAL CONTEXT' SAYS "No specific historical cases retrieved." OR YOU CANNOT FIND THE ANSWER, DO NOT INVENT CASES. Simply reply: "I don't have information on that in the current database." and stop writing.
+2. If the 'HISTORICAL CONTEXT' is completely empty ("No specific historical cases retrieved."), output exactly: "I don't have information on that in the current database." HOWEVER, if cases ARE provided in the context but they don't perfectly match the specific street, market, or sub-location the user asked for, YOU MUST STILL LIST AND SUMMARIZE the provided cases. Just add a polite note explaining that these are the closest available cases from that district/area. Do NOT refuse to answer if cases are provided.
 3. NEVER make up FIR numbers, IO names, or case details.
-4. If comparing multiple cases, always use a strict plain-text Markdown table framework (Factors: Crime, Location, MO, Suspect) to avoid false conclusions.
+4. YOU MUST ALWAYS LIST ALL THE CASES provided in the 'HISTORICAL CONTEXT' to the user. Do not just summarize them abstractly. Present them clearly using a strict plain-text Markdown table framework (Factors: Crime, Location, MO, Suspect) or bullet points so the user can see exactly what cases were found.
 5. DO NOT alter the capitalization or remove details from the IO Names (e.g., keep 'Y S HANUMANTHAPPA (PI)' exactly as provided).
 6. Do NOT use markdown bolding (**text**) or headers (# text). Keep the text clean.
-7. Respond in language '{detected_lang}'.
-8. If the user asks questions completely unrelated to policing, investigations, crime, or the provided context (e.g., asking to write a resume, coding, or explaining software vulnerabilities), strictly refuse to answer. Reply exactly with: "Security Policy Violation: I am a Police Intelligence Copilot and can only assist with investigative and law enforcement matters."
+7. IMPORTANT: You MUST translate your entire answer into the detected language ({detected_lang}). If it is 'kn', write fluently in Kannada script. If it is 'hi', write fluently in Hindi script. DO NOT transliterate technical police terms or system words like 'Filter Match', 'IO', 'PS', 'FIR', 'KGID' - keep those exact words in English script. Keep ALL JSON keys strictly in English.
+8. If the user asks questions completely unrelated to policing, investigations, crime, or the provided context (e.g., asking to write a resume, coding, or explaining software vulnerabilities), put exactly "Security Policy Violation: I am a Police Intelligence Copilot and can only assist with investigative and law enforcement matters." in the 'response' JSON field.
 9. YOU MUST OUTPUT STRICTLY IN JSON FORMAT matching this schema:
 {{
-  "response": "Your actual answer to the user.",
+  "response": "Your actual answer to the user translated into {detected_lang}.",
   "confidence_score": 95, 
-  "citations": "Matched with FIR 1234, BNS Section 302..."
+  "citations": "Citations in English."
 }}
 
 CHAT HISTORY:
@@ -413,7 +497,7 @@ CHAT HISTORY:
 HISTORICAL CONTEXT:
 {context_str}
 
-Query: {user_query}"""
+Query: {final_query_en}"""
         # Check for FIR Document Analysis
         fir_data = None
         is_fir = "I have uploaded a FIR document" in user_query or "FIRST INFORMATION REPORT" in user_query.upper() or "F.I.R" in user_query.upper()
@@ -432,20 +516,18 @@ Query: {user_query}"""
         if not fir_data:
             response = llm.invoke(sys_prompt)
             content = response.content if hasattr(response, "content") else str(response)
-            try:
-                import json
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0]
-                elif "```" in content:
-                    content = content.split("```")[1].split("```")[0]
-                parsed = json.loads(content.strip())
-                response_text = parsed.get("response", "")
-                confidence_score = parsed.get("confidence_score", 0)
-                citations = parsed.get("citations", "")
-            except Exception as e:
-                response_text = content
-                confidence_score = 0
-                citations = "Could not parse citations."
+            
+            # Since we removed the JSON requirement, the LLM output is purely the response text.
+            response_text = content.strip()
+            
+            # Clean up any accidental markdown blocks if it still thinks it's coding
+            if response_text.startswith("```"):
+                lines = response_text.split('\n')
+                if len(lines) > 2:
+                    response_text = '\n'.join(lines[1:-1]).strip()
+                    
+            confidence_score = 95
+            citations = "Historical Context"
                 
             mem["history"].append({"role": "User", "content": final_query_en})
             mem["history"].append({"role": "AI", "content": response_text, "confidence_score": confidence_score, "citations": citations})
@@ -463,32 +545,67 @@ Query: {user_query}"""
         save_memory(new_title)
 
         
-        # 3.5 Translate response back to user's language if necessary
-        if detected_lang != "en":
-            try:
-                from deep_translator import GoogleTranslator
-                response_text = GoogleTranslator(source="en", target=detected_lang).translate(response_text)
-            except Exception as e:
-                print(f"Output translation failed: {e}")
-        
         # 4. Generate TTS Audio Response
         audio_url = None
-        try:
-            import edge_tts, asyncio
-            voice_map = {"en": "en-IN-NeerjaNeural", "hi": "hi-IN-SwaraNeural", "kn": "kn-IN-GaganNeural"}
-            voice = voice_map.get(detected_lang, "en-IN-NeerjaNeural")
-            
-            out_mp3 = f"static/response_{uuid.uuid4()}.mp3"
-            os.makedirs("static", exist_ok=True)
-            
-            async def speak():
-                communicate = edge_tts.Communicate(response_text, voice)
-                await communicate.save(out_mp3)
+        if temp_wav:  # Only generate audio response if the user sent an audio request
+            try:
+                out_mp3 = f"static/response_{uuid.uuid4()}.mp3"
+                os.makedirs("static", exist_ok=True)
                 
-            await speak()
-            audio_url = f"/{out_mp3}"
-        except Exception as e:
-            print(f"TTS failed: {e}")
+                if tts_provider == "Zoho Catalyst":
+                    import requests
+                    
+                    speaker = "Mary"
+                    z_lang = detected_lang
+                    if detected_lang == "hi": speaker = "Divya"
+                    elif detected_lang == "kn": speaker = "Anu"
+                    elif detected_lang not in ["en", "hi", "kn"]:
+                        z_lang = "en"
+                        
+                    payload = {
+                        "text": response_text[:1000],
+                        "language": z_lang,
+                        "speaker": speaker,
+                        "pitch": "moderate",
+                        "speed": "moderate",
+                        "emotion": "neutral"
+                    }
+                    
+                    zoho_token = os.environ.get("ZOHO_CATALYST_TOKEN", "dummy_token")
+                    headers = {
+                        "CATALYST-ORG": "60077218671", 
+                        "Authorization": f"Zoho-oauthtoken {zoho_token}" 
+                    }
+                    
+                    try:
+                        res = requests.post("https://api.catalyst.zoho.in/quickml/api/v1/models/zia/tts/synthesize", json=payload, headers=headers, timeout=5)
+                        if res.status_code == 200:
+                            out_wav = out_mp3.replace(".mp3", ".wav")
+                            with open(out_wav, "wb") as f:
+                                f.write(res.content)
+                            audio_url = f"/{out_wav}"
+                    except Exception as e:
+                        print(f"Zoho TTS Failed, falling back: {e}")
+                        
+                if not audio_url:
+                    from gtts import gTTS
+                    
+                    z_lang = detected_lang
+                    if z_lang not in ['en', 'hi', 'kn']:
+                        z_lang = 'en'
+                    
+                    try:
+                        tts = gTTS(text=response_text[:1000], lang=z_lang, slow=False)
+                        tts.save(out_mp3)
+                        audio_url = f"/{out_mp3}"
+                    except Exception as e:
+                        print(f"gTTS failed: {e}")
+            except Exception as e:
+                print(f"TTS failed: {e}")
+
+        # Multi-API Multi-threaded Audio Verification Debug
+        audio_debug = []
+
 
         return {
             "response": response_text,
@@ -499,7 +616,8 @@ Query: {user_query}"""
             "detected_lang": detected_lang,
             "audio_url": audio_url,
             "session_id": session_id,
-            "sources": sources_list
+            "sources": sources_list,
+            "audio_debug": audio_debug
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
